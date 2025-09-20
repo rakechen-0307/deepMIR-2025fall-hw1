@@ -1,0 +1,1 @@
+python -m src.preprocess.vocal_separation --config ./configs/preprocess.yaml

@@ -1,0 +1,4 @@
+1. An Introduction to Signal Processing for Singing-Voice Analysis
+   https://ieeexplore.ieee.org/document/8588417
+2. GradientBoosting vs AdaBoost vs XGBoost vs CatBoost vs LightGBM
+   https://www.geeksforgeeks.org/machine-learning/gradientboosting-vs-adaboost-vs-xgboost-vs-catboost-vs-lightgbm/
