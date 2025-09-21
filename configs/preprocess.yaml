@@ -1,5 +1,0 @@
-dir:
-  original: data/hw1/artist20
-  processed: data/processed
-joblib:
-  jobs: 10

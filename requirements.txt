@@ -1,4 +1,9 @@
+numpy
+scikit-learn
+matplotlib
+librosa
+catboost
 demucs
 joblib
-omegaconf
+tqdm
 gdown

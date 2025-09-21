@@ -1,0 +1,22 @@
+artist_code_map = {
+    "aerosmith": 0,
+    "beatles": 1,
+    "creedence_clearwater_revival": 2,
+    "cure": 3,
+    "dave_matthews_band": 4,
+    "depeche_mode": 5,
+    "fleetwood_mac": 6,
+    "garth_brooks": 7,
+    "green_day": 8,
+    "led_zeppelin": 9,
+    "madonna": 10,
+    "metallica": 11,
+    "prince": 12,
+    "queen": 13,
+    "radiohead": 14,
+    "roxette": 15,
+    "steely_dan": 16,
+    "suzanne_vega": 17,
+    "tori_amos": 18,
+    "u2": 19
+}

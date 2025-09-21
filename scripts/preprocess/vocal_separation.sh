@@ -1,1 +1,1 @@
-python -m src.preprocess.vocal_separation --config ./configs/preprocess.yaml
+python -m src.preprocess.vocal_separation --input_dir ./data/hw1/artist20 --output_dir ./data/processed --jobs 10
