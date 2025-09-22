@@ -4,45 +4,63 @@ import numpy as np
 from ..mapping import artist_code_map
 
 def extract_features(
-    file_path, sr=16000, n_mfcc=13, len_segment=0,
-    return_label=True
+    vocals_path, inst_path=None, sr=16000, split_audio=False,
+    silent_threshold=50, min_seg=5.0, is_training=True
 ):
     """
     Extract audio features from a given file. 
     """
-    y, _ = librosa.load(file_path, sr=sr)
-    if return_label:
-        label = str(file_path).split("/")[-3]
+    y_vocals, _ = librosa.load(vocals_path, sr=sr)
+    if inst_path:
+        y_inst, _ = librosa.load(inst_path, sr=sr)
+
+    if is_training:
+        label = str(vocals_path).split("/")[-3]
         label_id = artist_code_map[label]
 
-    segment_samples = len_segment * sr if len_segment > 0 else len(y)
-    if return_label:
+    if split_audio:
+        intervals = librosa.effects.split(y_vocals, top_db=silent_threshold)
+        # Filter out short segments
+        intervals = [interval for interval in intervals if (interval[1] - interval[0]) / sr >= min_seg]
+        if len(intervals) == 0:
+            intervals = np.array([[0, len(y_vocals)]])
+    else:
+        intervals = np.array([[0, len(y_vocals)]])
+
+    if is_training:
         features, labels = [], []
     else:   
         features = []
 
-    for start in range(0, len(y), segment_samples):
-        end = start + segment_samples
-        segment = y[start:end]
+    for interval in intervals:
+        start, end = interval
+        vocals_segment = y_vocals[start:end]
+        if inst_path:
+            inst_segment = y_inst[start:end]
+            
+        # ========== Vocals MFCCs ==========
+        vocals_mfccs = librosa.feature.mfcc(y=vocals_segment, sr=sr, n_mfcc=13)
+        vocals_mfcc_mean = np.mean(vocals_mfccs, axis=1)
+        vocals_mfcc_std = np.std(vocals_mfccs, axis=1)
+        vocals_mfcc_vector = np.concatenate([vocals_mfcc_mean, vocals_mfcc_std])
 
-        if len(segment) < segment_samples:  # drop too short last piece
-            continue
+        # ========== Instrumental MFCCs ==========
+        if inst_path:
+            inst_mfccs = librosa.feature.mfcc(y=inst_segment, sr=sr, n_mfcc=5)
+            inst_mfcc_mean = np.mean(inst_mfccs, axis=1)
+            inst_mfcc_std = np.std(inst_mfccs, axis=1)
+            inst_mfcc_vector = np.concatenate([inst_mfcc_mean, inst_mfcc_std])
 
-        # ========== MFCCs ==========
-        mfccs = librosa.feature.mfcc(y=segment, sr=sr, n_mfcc=n_mfcc)
-        mfcc_mean = np.mean(mfccs, axis=1)
-        mfcc_std = np.std(mfccs, axis=1)
-        mfcc_vector = np.concatenate([mfcc_mean, mfcc_std])
-
-        # TODO: other features
-
-        feature_vector = np.concatenate([mfcc_vector])
+        if inst_path:
+            feature_vector = np.concatenate([vocals_mfcc_vector, inst_mfcc_vector])
+        else:
+            feature_vector = np.concatenate([vocals_mfcc_vector])
 
         features.append(feature_vector)
-        if return_label:
+        if is_training:
             labels.append(label_id)
 
-    if return_label:
-        return features, labels
+    if is_training:
+        return features, labels  # (features, labels)
     else:
-        return features
+        return str(vocals_path.name).replace(".mp3", ""), features  # (file_name, features)

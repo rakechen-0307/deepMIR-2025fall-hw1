@@ -4,20 +4,26 @@ import pathlib
 import argparse
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from catboost import CatBoostClassifier
+from sklearn.metrics import top_k_accuracy_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from ..commons import tqdm_joblib
+from ..mapping import artist_code_map
 from .utils import extract_features
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ML-based singer classification training.")
-    parser.add_argument("--input_dir", required=True, type=str, help="input audio files path")
+    parser.add_argument("--vocals_dir", required=True, type=str, help="input vocals files path")
+    parser.add_argument("--inst_dir", type=str, default=None, help="input instrumental files path (if any)")
     parser.add_argument("--output_dir", required=True, type=str, help="output results path")
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
-    parser.add_argument("--n_mfcc", default=13, type=int, help="number of MFCCs to extract")
-    parser.add_argument("--len_segment", default=0, type=int, help="length of audio segments (in seconds)")
+    parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
+    parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
+    parser.add_argument("--min_seg", default=5.0, type=float, help="minimum segment length (in seconds) after splitting")
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
-    parser.add_argument("--depth", default=3, type=int, help="depth of decision trees")
+    parser.add_argument("--depth", default=5, type=int, help="depth of decision trees")
     parser.add_argument("--iters", default=2000, type=int, help="number of boosting iterations")
     parser.add_argument("--lr", default=0.05, type=float, help="learning rate")
     parser.add_argument("--seed", default=42, type=int, help="random seed")
@@ -25,9 +31,10 @@ def parse_args():
 
 def main():
     args = parse_args()
-    input_dir = pathlib.Path(args.input_dir)
-    train_names_json = input_dir / "train.json"
-    val_names_json = input_dir / "val.json"
+    vocals_dir = pathlib.Path(args.vocals_dir)
+    train_names_json = vocals_dir / "train.json"
+    val_names_json = vocals_dir / "val.json"
+    inst_dir = pathlib.Path(args.inst_dir) if args.inst_dir else None
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -37,39 +44,74 @@ def main():
         val_names = json.load(f)
     
     # Prepare dataset (features and labels)
-    with tqdm_joblib(tqdm(desc="Extracting training features", total=len(train_names), ncols=80)):
-        train_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
-            joblib.delayed(extract_features)(
-                file_path=input_dir / name,
+    if args.jobs == 1:
+        train_data = []
+        for name in tqdm(train_names, desc="Extracting training features", ncols=80):
+            features, labels = extract_features(
+                vocals_path=vocals_dir / name,
+                inst_path=inst_dir / name if inst_dir else None,
                 sr=args.sr,
-                n_mfcc=args.n_mfcc,
-                len_segment=args.len_segment
-            ) for name in train_names
-        )
+                split_audio=args.split_audio,
+                silent_threshold=args.silent_threshold,
+                min_seg=args.min_seg,
+                is_training=True
+            )
+            train_data.append((features, labels))
+    else:
+        with tqdm_joblib(tqdm(desc="Extracting training features", total=len(train_names), ncols=80)):
+            train_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
+                joblib.delayed(extract_features)(
+                    vocals_path=vocals_dir / name,
+                    inst_path=inst_dir / name if inst_dir else None,
+                    sr=args.sr,
+                    split_audio=args.split_audio,
+                    silent_threshold=args.silent_threshold,
+                    min_seg=args.min_seg,
+                    is_training=True
+                ) for name in train_names
+            )
     train_x, train_y = [], []
     for features, labels in train_data:
         train_x.extend(features)
         train_y.extend(labels)
     train_x, train_y = np.array(train_x), np.array(train_y)
     
-    with tqdm_joblib(tqdm(desc="Extracting validation features", total=len(val_names), ncols=80)):
-        val_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
-            joblib.delayed(extract_features)(
-                file_path=input_dir / name,
+    if args.jobs == 1:
+        val_data = []
+        for name in tqdm(val_names, desc="Extracting validation features", ncols=80):
+            features, labels = extract_features(
+                vocals_path=vocals_dir / name,
+                inst_path=inst_dir / name if inst_dir else None,
                 sr=args.sr,
-                n_mfcc=args.n_mfcc,
-                len_segment=args.len_segment
-            ) for name in val_names
-        )
-    val_x, val_y = [], []
+                split_audio=args.split_audio,
+                silent_threshold=args.silent_threshold,
+                min_seg=args.min_seg,
+                is_training=True
+            )
+            val_data.append((features, labels))
+    else:
+        with tqdm_joblib(tqdm(desc="Extracting validation features", total=len(val_names), ncols=80)):
+            val_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
+                joblib.delayed(extract_features)(
+                    vocals_path=vocals_dir / name,
+                    inst_path=inst_dir / name if inst_dir else None,
+                    sr=args.sr,
+                    split_audio=args.split_audio,
+                    silent_threshold=args.silent_threshold,
+                    min_seg=args.min_seg,
+                    is_training=True
+                ) for name in val_names
+            )
+    val_x, val_y, num_segs = [], [], []
     for features, labels in val_data:
         val_x.extend(features)
         val_y.extend(labels)
+        num_segs.append(len(features))
     val_x, val_y = np.array(val_x), np.array(val_y)
 
     print(f"Training data shape: {train_x.shape}, Training labels shape: {train_y.shape}")
     print(f"Validation data shape: {val_x.shape}, Validation labels shape: {val_y.shape}")
-    print(f"Start training classifier...")
+    print(f"===== Start training classifier... =====")
 
     # Train classifier
     clf = CatBoostClassifier(
@@ -81,11 +123,78 @@ def main():
         random_seed=args.seed,
         verbose=100
     )
-    clf.fit(train_x, train_y, eval_set=(val_x, val_y), early_stopping_rounds=50)
+    clf.fit(train_x, train_y)
+    print("===== Training completed. =====\n")
 
     # Save model
     output_model_path = output_dir / "model.cbm"
     clf.save_model(str(output_model_path))
+
+    # Evaluate model
+    val_pred_proba = clf.predict_proba(val_x)
+
+    code_artist_map = {v: k for k, v in artist_code_map.items()}
+    feature_idx = 0
+    val_pred_proba_song = []
+    val_y_song = []
+    for n_segs in num_segs:
+        proba = val_pred_proba[feature_idx:feature_idx+n_segs]
+        avg_proba = np.mean(proba, axis=0)
+        val_pred_proba_song.append(avg_proba)
+        val_y_song.append(val_y[feature_idx])
+        feature_idx += n_segs
+    
+    val_pred_proba_song = np.array(val_pred_proba_song)
+    val_y_song = np.array(val_y_song)
+
+    top1_acc = top_k_accuracy_score(val_y_song, val_pred_proba_song, k=1, labels=list(artist_code_map.values()))
+    top3_acc = top_k_accuracy_score(val_y_song, val_pred_proba_song, k=3, labels=list(artist_code_map.values()))
+    print(f"Validation Top-1 Accuracy: {top1_acc:.4f}")
+    print(f"Validation Top-3 Accuracy: {top3_acc:.4f}")
+
+    # Save confusion matrix
+    val_y_pred_song = np.argmax(val_pred_proba_song, axis=1)
+
+    code_artist_map = {v: k for k, v in artist_code_map.items()}
+    val_y_pred_artist = [code_artist_map[code] for code in val_y_pred_song]
+    val_y_artist = [code_artist_map[code] for code in val_y_song]
+    labels = list(artist_code_map.keys())
+    cm_unnormalized = confusion_matrix(val_y_artist, val_y_pred_artist, labels=labels, normalize=None)
+    cm_normalized = confusion_matrix(val_y_artist, val_y_pred_artist, labels=labels, normalize='true')
+    disp_unnormalized = ConfusionMatrixDisplay(confusion_matrix=cm_unnormalized, display_labels=labels)
+    disp_normalized = ConfusionMatrixDisplay(confusion_matrix=cm_normalized, display_labels=labels)
+
+    _, ax = plt.subplots(figsize=(20, 20))
+    disp_unnormalized.plot(cmap=plt.cm.Blues, ax=ax, colorbar=True, values_format="d")
+    plt.title("Confusion Matrix (Counts)\n", fontsize=26)
+    ax.set_xlabel("Predicted label", fontsize=24)
+    ax.set_ylabel("True label", fontsize=24)
+    ax.tick_params(axis="both", which="major", labelsize=18)
+    for text in disp_unnormalized.text_.ravel():
+        text.set_fontsize(16)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+
+    output_cm_unnormalized_path = output_dir / "confusion_matrix_counts.png"
+    plt.savefig(str(output_cm_unnormalized_path), dpi=300)
+    plt.close()
+
+    _, ax = plt.subplots(figsize=(20, 20))
+    disp_normalized.plot(cmap=plt.cm.Blues, ax=ax, colorbar=True, values_format=".2f")
+    plt.title("Confusion Matrix (Normalized)\n", fontsize=26)
+    ax.set_xlabel("Predicted label", fontsize=24)
+    ax.set_ylabel("True label", fontsize=24)
+    ax.tick_params(axis="both", which="major", labelsize=18)
+    for text in disp_normalized.text_.ravel():
+        text.set_fontsize(16)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+
+    output_cm_normalized_path = output_dir / "confusion_matrix_normalized.png"
+    plt.savefig(str(output_cm_normalized_path), dpi=300)
+    plt.close()
+
+    print(f"Confusion matrices saved to folder: {output_dir}")
 
 if __name__ == "__main__":
     main()

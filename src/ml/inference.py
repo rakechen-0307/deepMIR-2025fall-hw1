@@ -1,3 +1,4 @@
+import json
 import joblib
 import pathlib
 import argparse
@@ -6,58 +7,87 @@ from tqdm import tqdm
 from catboost import CatBoostClassifier
 
 from ..commons import tqdm_joblib
+from ..mapping import artist_code_map
 from .utils import extract_features
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ML-based singer classification inference.")
-    parser.add_argument("--input_dir", required=True, type=str, help="input audio files path")
+    parser.add_argument("--vocals_dir", required=True, type=str, help="input vocals files path")
+    parser.add_argument("--inst_dir", type=str, default=None, help="input instrumental files path (if any)")
     parser.add_argument("--exp_dir", required=True, type=str, help="experiments/results path")
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
-    parser.add_argument("--n_mfcc", default=13, type=int, help="number of MFCCs to extract")
-    parser.add_argument("--len_segment", default=0, type=int, help="length of audio segments (in seconds)")
+    parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
+    parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
+    parser.add_argument("--min_seg", default=5.0, type=float, help="minimum segment length (in seconds) after splitting")
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
     return parser.parse_args()
 
 def main():
     args = parse_args()
-    input_dir = pathlib.Path(args.input_dir)
-    input_test_dir = input_dir / "test"
+    vocals_dir = pathlib.Path(args.vocals_dir)
+    inst_dir = pathlib.Path(args.inst_dir) if args.inst_dir else None
+    vocals_test_dir = vocals_dir / "test"
+    inst_test_dir = inst_dir / "test" if inst_dir else None
     exp_dir = pathlib.Path(args.exp_dir)
-    model_path = exp_dir / "model.cbm"
-    result_dir = exp_dir / "results"
-    result_dir.mkdir(parents=True, exist_ok=True)    
+    model_path = exp_dir / "model.cbm" 
 
     # Load model
     clf = CatBoostClassifier()
     clf.load_model(str(model_path))
 
-    test_files = sorted([f.name for f in input_test_dir.iterdir() if str(f).endswith('.mp3')])
+    test_files = sorted([f.name for f in vocals_test_dir.iterdir() if str(f).endswith('.mp3')])
     # Prepare dataset (features and labels)
-    with tqdm_joblib(tqdm(desc="Extracting features", total=len(test_files), ncols=80)):
-        data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
-            joblib.delayed(extract_features)(
-                file_path=input_test_dir / name,
+    if args.jobs == 1:
+        test_data = []
+        for name in tqdm(test_files, desc="Extracting features", ncols=80):
+            file_name, features = extract_features(
+                vocals_path=vocals_test_dir / name,
+                inst_path=inst_test_dir / name if inst_dir else None,
                 sr=args.sr,
-                n_mfcc=args.n_mfcc,
-                len_segment=args.len_segment,
-                return_label=False
-            ) for name in test_files
-        )
-    x = []
-    for features in data:
+                split_audio=args.split_audio,
+                silent_threshold=args.silent_threshold,
+                min_seg=args.min_seg,
+                is_training=False
+            )
+            test_data.append((file_name, features))
+    else:
+        with tqdm_joblib(tqdm(desc="Extracting features", total=len(test_files), ncols=80)):
+            test_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
+                joblib.delayed(extract_features)(
+                    vocals_path=vocals_test_dir / name,
+                    inst_path=inst_test_dir / name if inst_dir else None,
+                    sr=args.sr,
+                    split_audio=args.split_audio,
+                    silent_threshold=args.silent_threshold,
+                    min_seg=args.min_seg,
+                    is_training=False
+                ) for name in test_files
+            )
+    names, x, num_segs = [], [], []
+    for file_name, features in test_data:
+        names.append(file_name)
         x.extend(features)
+        num_segs.append(len(features))
     x = np.array(x)
 
     # Predict
     y_pred_proba = clf.predict_proba(x)
-    
-    # save top3 predictions
-    top3 = np.argsort(y_pred_proba, axis=1)[:,-3:][:,::-1]  # (num_samples, 3)
-    with open(result_dir / "top3_predictions.txt", "w") as f:
-        for i, name in enumerate(test_files):
-            preds = top3[i]
-            preds_str = " ".join([str(p) for p in preds])
-            f.write(f"{name} {preds_str}\n")
+
+    # Save results
+    code_artist_map = {v: k for k, v in artist_code_map.items()}
+    results = {}
+    feature_idx = 0
+    for i, name in enumerate(names):
+        proba = y_pred_proba[feature_idx:feature_idx+num_segs[i]]
+        avg_proba = np.mean(proba, axis=0)
+        top3_idx = np.argsort(avg_proba)[::-1][:3].tolist()
+        top3_artist = [code_artist_map[idx] for idx in top3_idx]
+        results[name.replace(".mp3", "")] = top3_artist
+        feature_idx += num_segs[i]
+
+    # Save results
+    with open(exp_dir / "test_pred.json", "w") as f:
+        json.dump(results, f, indent=4)
 
 if __name__ == "__main__":
     main()
