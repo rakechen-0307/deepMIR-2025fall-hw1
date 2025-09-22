@@ -11,8 +11,10 @@ def extract_features(
     Extract audio features from a given file. 
     """
     y_vocals, _ = librosa.load(vocals_path, sr=sr)
+    y_vocals = librosa.util.normalize(y_vocals)  # Normalize audio
     if inst_path:
         y_inst, _ = librosa.load(inst_path, sr=sr)
+        y_inst = librosa.util.normalize(y_inst)  # Normalize audio
 
     if is_training:
         label = str(vocals_path).split("/")[-3]

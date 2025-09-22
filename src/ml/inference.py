@@ -80,6 +80,7 @@ def main():
     for i, name in enumerate(names):
         proba = y_pred_proba[feature_idx:feature_idx+num_segs[i]]
         avg_proba = np.mean(proba, axis=0)
+        avg_proba = avg_proba / np.sum(avg_proba)  # Normalize
         top3_idx = np.argsort(avg_proba)[::-1][:3].tolist()
         top3_artist = [code_artist_map[idx] for idx in top3_idx]
         results[name.replace(".mp3", "")] = top3_artist

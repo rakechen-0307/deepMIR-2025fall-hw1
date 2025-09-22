@@ -140,6 +140,7 @@ def main():
     for n_segs in num_segs:
         proba = val_pred_proba[feature_idx:feature_idx+n_segs]
         avg_proba = np.mean(proba, axis=0)
+        avg_proba = avg_proba / np.sum(avg_proba)  # Normalize
         val_pred_proba_song.append(avg_proba)
         val_y_song.append(val_y[feature_idx])
         feature_idx += n_segs
