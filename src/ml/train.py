@@ -21,11 +21,17 @@ def parse_args():
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
     parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
-    parser.add_argument("--min_seg", default=5.0, type=float, help="minimum segment length (in seconds) after splitting")
+    parser.add_argument("--min_seg", default=10.0, type=float, help="minimum segment length (in seconds) after splitting")
+    parser.add_argument("--max_silence", default=10.0, type=float, help="maximum silence length (in seconds) to keep in a segment after splitting")
+    parser.add_argument("--num_augments", default=0, type=int, help="number of augmentations per audio (only for training set)")
+    parser.add_argument("--time_stretch_ratio", default=0.7, type=float, help="probability of applying time stretching (only for training set)")
+    parser.add_argument("--pitch_shift_ratio", default=0.7, type=float, help="probability of applying pitch shifting (only for training set)")
+    parser.add_argument("--noise_injection_ratio", default=0.7, type=float, help="probability of applying noise injection (only for training set)")
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
-    parser.add_argument("--depth", default=5, type=int, help="depth of decision trees")
-    parser.add_argument("--iters", default=2000, type=int, help="number of boosting iterations")
-    parser.add_argument("--lr", default=0.05, type=float, help="learning rate")
+    parser.add_argument("--depth", default=4, type=int, help="depth of decision trees")
+    parser.add_argument("--iters", default=10000, type=int, help="number of boosting iterations")
+    parser.add_argument("--lr", default=0.01, type=float, help="learning rate")
+    parser.add_argument("--l2_leaf_reg", default=3.0, type=float, help="L2 regularization term on weights")
     parser.add_argument("--seed", default=42, type=int, help="random seed")
     return parser.parse_args()
 
@@ -54,7 +60,12 @@ def main():
                 split_audio=args.split_audio,
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
-                is_training=True
+                max_silence=args.max_silence,
+                data_type="train",
+                num_augments=args.num_augments,
+                time_stretch_ratio=args.time_stretch_ratio,
+                pitch_shift_ratio=args.pitch_shift_ratio,
+                noise_injection_ratio=args.noise_injection_ratio
             )
             train_data.append((features, labels))
     else:
@@ -67,7 +78,12 @@ def main():
                     split_audio=args.split_audio,
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
-                    is_training=True
+                    max_silence=args.max_silence,
+                    data_type="train",
+                    num_augments=args.num_augments,
+                    time_stretch_ratio=args.time_stretch_ratio,
+                    pitch_shift_ratio=args.pitch_shift_ratio,
+                    noise_injection_ratio=args.noise_injection_ratio
                 ) for name in train_names
             )
     train_x, train_y = [], []
@@ -75,6 +91,10 @@ def main():
         train_x.extend(features)
         train_y.extend(labels)
     train_x, train_y = np.array(train_x), np.array(train_y)
+    # Shuffle training data
+    shuffled_train_indices = np.random.permutation(len(train_x))
+    train_x = train_x[shuffled_train_indices]
+    train_y = train_y[shuffled_train_indices]
     
     if args.jobs == 1:
         val_data = []
@@ -86,7 +106,8 @@ def main():
                 split_audio=args.split_audio,
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
-                is_training=True
+                max_silence=args.max_silence,
+                data_type="val"
             )
             val_data.append((features, labels))
     else:
@@ -99,7 +120,8 @@ def main():
                     split_audio=args.split_audio,
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
-                    is_training=True
+                    max_silence=args.max_silence,
+                    data_type="val"
                 ) for name in val_names
             )
     val_x, val_y, num_segs = [], [], []
@@ -115,15 +137,17 @@ def main():
 
     # Train classifier
     clf = CatBoostClassifier(
-        iterations=args.iters,
         depth=args.depth,
         learning_rate=args.lr,
+        iterations=args.iters,
+        use_best_model=True,
+        l2_leaf_reg=args.l2_leaf_reg,
         loss_function="MultiClass",
         eval_metric="Accuracy",
         random_seed=args.seed,
-        verbose=100
+        verbose=200
     )
-    clf.fit(train_x, train_y)
+    clf.fit(train_x, train_y, eval_set=(val_x, val_y))
     print("===== Training completed. =====\n")
 
     # Save model

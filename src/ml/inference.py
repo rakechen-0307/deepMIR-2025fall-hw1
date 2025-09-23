@@ -18,7 +18,8 @@ def parse_args():
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
     parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
-    parser.add_argument("--min_seg", default=5.0, type=float, help="minimum segment length (in seconds) after splitting")
+    parser.add_argument("--min_seg", default=10.0, type=float, help="minimum segment length (in seconds) after splitting")
+    parser.add_argument("--max_silence", default=10.0, type=float, help="maximum silence length (in seconds) to keep in a segment after splitting")
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
     return parser.parse_args()
 
@@ -47,7 +48,7 @@ def main():
                 split_audio=args.split_audio,
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
-                is_training=False
+                data_type="test"
             )
             test_data.append((file_name, features))
     else:
@@ -60,7 +61,7 @@ def main():
                     split_audio=args.split_audio,
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
-                    is_training=False
+                    data_type="test"
                 ) for name in test_files
             )
     names, x, num_segs = [], [], []
