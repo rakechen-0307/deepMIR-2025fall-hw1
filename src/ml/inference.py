@@ -12,6 +12,7 @@ from .utils import extract_features
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ML-based singer classification inference.")
+    # Data parameters
     parser.add_argument("--vocals_dir", required=True, type=str, help="input vocals files path")
     parser.add_argument("--inst_dir", type=str, default=None, help="input instrumental files path (if any)")
     parser.add_argument("--exp_dir", required=True, type=str, help="experiments/results path")
@@ -19,8 +20,11 @@ def parse_args():
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
     parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
     parser.add_argument("--min_seg", default=10.0, type=float, help="minimum segment length (in seconds) after splitting")
+    parser.add_argument("--max_seg", default=30.0, type=float, help="maximum segment length (in seconds) after splitting")
     parser.add_argument("--max_silence", default=10.0, type=float, help="maximum silence length (in seconds) to keep in a segment after splitting")
+    # Model parameters
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
+    parser.add_argument("--use_boosting", action="store_true", help="whether to use boosting (CatBoost) or single decision tree")
     return parser.parse_args()
 
 def main():
@@ -30,11 +34,14 @@ def main():
     vocals_test_dir = vocals_dir / "test"
     inst_test_dir = inst_dir / "test" if inst_dir else None
     exp_dir = pathlib.Path(args.exp_dir)
-    model_path = exp_dir / "model.cbm" 
+    model_path = exp_dir / "model.joblib" if not args.use_boosting else exp_dir / "model.cbm" 
 
     # Load model
-    clf = CatBoostClassifier()
-    clf.load_model(str(model_path))
+    if not args.use_boosting:
+        clf = joblib.load(model_path)
+    else:
+        clf = CatBoostClassifier()
+        clf.load_model(str(model_path))
 
     test_files = sorted([f.name for f in vocals_test_dir.iterdir() if str(f).endswith('.mp3')])
     # Prepare dataset (features and labels)
@@ -48,6 +55,8 @@ def main():
                 split_audio=args.split_audio,
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
+                max_seg=args.max_seg,
+                max_silence=args.max_silence,
                 data_type="test"
             )
             test_data.append((file_name, features))
@@ -61,6 +70,8 @@ def main():
                     split_audio=args.split_audio,
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
+                    max_seg=args.max_seg,
+                    max_silence=args.max_silence,
                     data_type="test"
                 ) for name in test_files
             )

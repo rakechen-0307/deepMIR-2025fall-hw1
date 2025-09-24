@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from catboost import CatBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import top_k_accuracy_score
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
@@ -15,6 +16,7 @@ from .utils import extract_features
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ML-based singer classification training.")
+    # Data parameters
     parser.add_argument("--vocals_dir", required=True, type=str, help="input vocals files path")
     parser.add_argument("--inst_dir", type=str, default=None, help="input instrumental files path (if any)")
     parser.add_argument("--output_dir", required=True, type=str, help="output results path")
@@ -22,15 +24,18 @@ def parse_args():
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
     parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
     parser.add_argument("--min_seg", default=10.0, type=float, help="minimum segment length (in seconds) after splitting")
+    parser.add_argument("--max_seg", default=30.0, type=float, help="maximum segment length (in seconds) after splitting")
     parser.add_argument("--max_silence", default=10.0, type=float, help="maximum silence length (in seconds) to keep in a segment after splitting")
     parser.add_argument("--num_augments", default=0, type=int, help="number of augmentations per audio (only for training set)")
     parser.add_argument("--time_stretch_ratio", default=0.7, type=float, help="probability of applying time stretching (only for training set)")
     parser.add_argument("--pitch_shift_ratio", default=0.7, type=float, help="probability of applying pitch shifting (only for training set)")
     parser.add_argument("--noise_injection_ratio", default=0.7, type=float, help="probability of applying noise injection (only for training set)")
+    # Model parameters
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
+    parser.add_argument("--use_boosting", action="store_true", help="whether to use boosting (CatBoost) or single decision tree")
     parser.add_argument("--depth", default=4, type=int, help="depth of decision trees")
     parser.add_argument("--iters", default=10000, type=int, help="number of boosting iterations")
-    parser.add_argument("--lr", default=0.01, type=float, help="learning rate")
+    parser.add_argument("--lr", default=0.03, type=float, help="learning rate")
     parser.add_argument("--l2_leaf_reg", default=3.0, type=float, help="L2 regularization term on weights")
     parser.add_argument("--seed", default=42, type=int, help="random seed")
     return parser.parse_args()
@@ -60,6 +65,7 @@ def main():
                 split_audio=args.split_audio,
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
+                max_seg=args.max_seg,
                 max_silence=args.max_silence,
                 data_type="train",
                 num_augments=args.num_augments,
@@ -78,6 +84,7 @@ def main():
                     split_audio=args.split_audio,
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
+                    max_seg=args.max_seg,
                     max_silence=args.max_silence,
                     data_type="train",
                     num_augments=args.num_augments,
@@ -106,6 +113,7 @@ def main():
                 split_audio=args.split_audio,
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
+                max_seg=args.max_seg,
                 max_silence=args.max_silence,
                 data_type="val"
             )
@@ -120,6 +128,7 @@ def main():
                     split_audio=args.split_audio,
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
+                    max_seg=args.max_seg,
                     max_silence=args.max_silence,
                     data_type="val"
                 ) for name in val_names
@@ -136,23 +145,32 @@ def main():
     print(f"===== Start training classifier... =====")
 
     # Train classifier
-    clf = CatBoostClassifier(
-        depth=args.depth,
-        learning_rate=args.lr,
-        iterations=args.iters,
-        use_best_model=True,
-        l2_leaf_reg=args.l2_leaf_reg,
-        loss_function="MultiClass",
-        eval_metric="Accuracy",
-        random_seed=args.seed,
-        verbose=200
-    )
-    clf.fit(train_x, train_y, eval_set=(val_x, val_y))
+    if not args.use_boosting:
+        clf = DecisionTreeClassifier(
+            max_depth=args.depth,
+            random_state=args.seed
+        )
+    else:
+        clf = CatBoostClassifier(
+            depth=args.depth,
+            learning_rate=args.lr,
+            iterations=args.iters,
+            l2_leaf_reg=args.l2_leaf_reg,
+            loss_function="MultiClass",
+            eval_metric="Accuracy",
+            random_seed=args.seed,
+            verbose=200
+        )
+    clf.fit(train_x, train_y)
     print("===== Training completed. =====\n")
 
     # Save model
-    output_model_path = output_dir / "model.cbm"
-    clf.save_model(str(output_model_path))
+    if not args.use_boosting:
+        output_model_path = output_dir / "model.joblib"
+        joblib.dump(clf, output_model_path)
+    else:
+        output_model_path = output_dir / "model.cbm"
+        clf.save_model(str(output_model_path))
 
     # Evaluate model
     val_pred_proba = clf.predict_proba(val_x)

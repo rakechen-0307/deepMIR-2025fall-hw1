@@ -1,7 +1,7 @@
-numpy
+numpy==1.26.4
+librosa
 scikit-learn
 matplotlib
-librosa
 catboost
 demucs
 joblib

@@ -1,0 +1,1 @@
+python -m src.ml.train --vocals_dir ./data/processed/vocals/ --inst_dir ./data/processed/inst/ --output_dir ./exp --jobs 10 --split_audio --num_augments 2 --use_boosting
