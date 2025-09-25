@@ -145,26 +145,26 @@ def extract_features(
                     vocals_segment = augment_audio(vocals_segment, None, sr, time_stretch, pitch_shift, noise_injection)
 
             # ========== Vocals MFCCs ==========
-            vocals_mfccs = librosa.feature.mfcc(y=vocals_segment, sr=sr, n_mfcc=13)
+            vocals_mfccs = librosa.feature.mfcc(y=vocals_segment, sr=sr, n_mfcc=13, n_fft=512, hop_length=160)
             vocals_mfcc_mean = np.mean(vocals_mfccs, axis=1)
             vocals_mfcc_std = np.std(vocals_mfccs, axis=1)
             vocals_mfcc_vector = np.concatenate([vocals_mfcc_mean, vocals_mfcc_std])
 
             # ========== Vocals Chroma ==========
-            vocals_chroma = librosa.feature.chroma_stft(y=vocals_segment, sr=sr, n_chroma=12)
+            vocals_chroma = librosa.feature.chroma_cqt(y=vocals_segment, sr=sr, n_chroma=12, window=4096, hop_length=512)
             vocals_chroma_mean = np.mean(vocals_chroma, axis=1)
             vocals_chroma_std = np.std(vocals_chroma, axis=1)
             vocals_chroma_vector = np.concatenate([vocals_chroma_mean, vocals_chroma_std])
 
             if inst_path:
                 # ========== Instrumental MFCCs ==========
-                inst_mfccs = librosa.feature.mfcc(y=inst_segment, sr=sr, n_mfcc=5)
+                inst_mfccs = librosa.feature.mfcc(y=inst_segment, sr=sr, n_mfcc=5, n_fft=512, hop_length=160)
                 inst_mfcc_mean = np.mean(inst_mfccs, axis=1)
                 inst_mfcc_std = np.std(inst_mfccs, axis=1)
                 inst_mfcc_vector = np.concatenate([inst_mfcc_mean, inst_mfcc_std])
 
                 # ========== Instrumental Chroma ==========
-                inst_chroma = librosa.feature.chroma_stft(y=inst_segment, sr=sr, n_chroma=12)
+                inst_chroma = librosa.feature.chroma_cqt(y=inst_segment, sr=sr, n_chroma=12, window=4096, hop_length=512)
                 inst_chroma_mean = np.mean(inst_chroma, axis=1)
                 inst_chroma_std = np.std(inst_chroma, axis=1)
                 inst_chroma_vector = np.concatenate([inst_chroma_mean, inst_chroma_std])
