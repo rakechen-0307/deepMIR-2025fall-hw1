@@ -1,16 +1,33 @@
 import torch
 
-class Conv_2d(torch.nn.Module):
-    def __init__(self, input_channels, output_channels, shape=3, stride=1, pooling=2):
-        super(Conv_2d, self).__init__()
-        self.conv = torch.nn.Conv2d(input_channels, output_channels, shape, stride=stride, padding=shape//2)
-        self.bn = torch.nn.BatchNorm2d(output_channels)
-        self.relu = torch.nn.ReLU()
-        self.mp = torch.nn.MaxPool2d(pooling)
-    def forward(self, x):
-        out = self.mp(self.relu(self.bn(self.conv(x))))
-        return out
+class Res_2d(torch.nn.Module):
+    def __init__(self, input_channels, output_channels, shape=3, stride=2):
+        super(Res_2d, self).__init__()
+        # convolution
+        self.conv_1 = torch.nn.Conv2d(input_channels, output_channels, shape, stride=stride, padding=shape//2)
+        self.bn_1 = torch.nn.BatchNorm2d(output_channels)
+        self.conv_2 = torch.nn.Conv2d(output_channels, output_channels, shape, padding=shape//2)
+        self.bn_2 = torch.nn.BatchNorm2d(output_channels)
 
+        # residual
+        self.diff = False
+        if (stride != 1) or (input_channels != output_channels):
+            self.conv_3 = torch.nn.Conv2d(input_channels, output_channels, shape, stride=stride, padding=shape//2)
+            self.bn_3 = torch.nn.BatchNorm2d(output_channels)
+            self.diff = True
+        self.relu = torch.nn.ReLU()
+
+    def forward(self, x):
+        # convolution
+        out = self.bn_2(self.conv_2(self.relu(self.bn_1(self.conv_1(x)))))
+
+        # residual
+        if self.diff:
+            x = self.bn_3(self.conv_3(x))
+        out = x + out
+        out = self.relu(out)
+        return out
+    
 class ShortChunkCNN(torch.nn.Module):
     """
     Short-chunk CNN architecture.
@@ -31,22 +48,22 @@ class ShortChunkCNN(torch.nn.Module):
         self.spec_bn = torch.nn.BatchNorm2d(1)
 
         # Mel Spectrogram CNN
-        self.mel_layer1 = Conv_2d(1, mel_n_channels, pooling=2)
-        self.mel_layer2 = Conv_2d(mel_n_channels, mel_n_channels, pooling=2)
-        self.mel_layer3 = Conv_2d(mel_n_channels, mel_n_channels, pooling=2)
-        self.mel_layer4 = Conv_2d(mel_n_channels, mel_n_channels*2, pooling=2)
-        self.mel_layer5 = Conv_2d(mel_n_channels*2, mel_n_channels*2, pooling=2)
-        self.mel_layer6 = Conv_2d(mel_n_channels*2, mel_n_channels*2, pooling=2)
-        self.mel_layer7 = Conv_2d(mel_n_channels*2, mel_n_channels*4, pooling=2)
+        self.mel_layer1 = Res_2d(1, mel_n_channels, stride=(2, 2))
+        self.mel_layer2 = Res_2d(mel_n_channels, mel_n_channels, stride=(2, 2))
+        self.mel_layer3 = Res_2d(mel_n_channels, mel_n_channels, stride=(2, 2))
+        self.mel_layer4 = Res_2d(mel_n_channels, mel_n_channels*2, stride=(2, 1))
+        self.mel_layer5 = Res_2d(mel_n_channels*2, mel_n_channels*2, stride=(2, 1))
+        self.mel_layer6 = Res_2d(mel_n_channels*2, mel_n_channels*2, stride=(2, 1))
+        self.mel_layer7 = Res_2d(mel_n_channels*2, mel_n_channels*4, stride=(2, 1))
 
         # CQT CNN
-        self.cqt_layer1 = Conv_2d(1, cqt_n_channels, pooling=1)
-        self.cqt_layer2 = Conv_2d(cqt_n_channels, cqt_n_channels, pooling=2)
-        self.cqt_layer3 = Conv_2d(cqt_n_channels, cqt_n_channels, pooling=2)
-        self.cqt_layer4 = Conv_2d(cqt_n_channels, cqt_n_channels*2, pooling=2)
-        self.cqt_layer5 = Conv_2d(cqt_n_channels*2, cqt_n_channels*2, pooling=2)
-        self.cqt_layer6 = Conv_2d(cqt_n_channels*2, cqt_n_channels*2, pooling=2)
-        self.cqt_layer7 = Conv_2d(cqt_n_channels*2, cqt_n_channels*4, pooling=2)
+        self.cqt_layer1 = Res_2d(1, cqt_n_channels, stride=(2, 4))
+        self.cqt_layer2 = Res_2d(cqt_n_channels, cqt_n_channels, stride=(2, 4))
+        self.cqt_layer3 = Res_2d(cqt_n_channels, cqt_n_channels, stride=(2, 4))
+        self.cqt_layer4 = Res_2d(cqt_n_channels, cqt_n_channels*2, stride=(1, 2))
+        self.cqt_layer5 = Res_2d(cqt_n_channels*2, cqt_n_channels*2, stride=(1, 2))
+        self.cqt_layer6 = Res_2d(cqt_n_channels*2, cqt_n_channels*2, stride=(1, 2))
+        self.cqt_layer7 = Res_2d(cqt_n_channels*2, cqt_n_channels*4, stride=(1, 2))
 
         # Dense
         if "mel" in self.used_spec and "cqt" in self.used_spec:
@@ -58,9 +75,9 @@ class ShortChunkCNN(torch.nn.Module):
         else:
             raise ValueError("At least one of 'mel' or 'cqt' must be used in used_spec.")
 
-        self.dense1 = torch.nn.Linear(n_channels, n_channels // 4)
-        self.bn = torch.nn.BatchNorm1d(n_channels // 4)
-        self.dense2 = torch.nn.Linear(n_channels // 4, n_class)
+        self.dense1 = torch.nn.Linear(n_channels, n_channels)
+        self.bn = torch.nn.BatchNorm1d(n_channels)
+        self.dense2 = torch.nn.Linear(n_channels, n_class)
         self.dropout = torch.nn.Dropout(dropout)
         self.relu = torch.nn.ReLU()
 
@@ -90,7 +107,7 @@ class ShortChunkCNN(torch.nn.Module):
             cqt = self.cqt_layer5(cqt)
             cqt = self.cqt_layer6(cqt)
             cqt = self.cqt_layer7(cqt)
-            cqt = cqt.squeeze(2)  # [batch, channels, time]
+            cqt = cqt.squeeze(3)  # [batch, channels, freq]
 
             if cqt.size(-1) != 1:
                 cqt = torch.nn.MaxPool1d(cqt.size(-1))(cqt)

@@ -87,7 +87,7 @@ def main():
 
                 if "mel" in args.used_spec:
                     mel = extract_melspectrogram(
-                        y=y, sr=args.sr, n_fft=args.mel_n_fft, hop_length=args.mel_hop_length,
+                        y=y_segment, sr=args.sr, n_fft=args.mel_n_fft, hop_length=args.mel_hop_length,
                         power=args.mel_power, fmin=args.mel_fmin, fmax=args.mel_fmax, n_mels=args.mel_n_mels
                     )
                 else:
@@ -95,7 +95,7 @@ def main():
                 
                 if "cqt" in args.used_spec:
                     cqt = extract_cqt(
-                        y=y, sr=args.sr, hop_length=args.cqt_hop_length, fmin=args.cqt_fmin,
+                        y=y_segment, sr=args.sr, hop_length=args.cqt_hop_length, fmin=args.cqt_fmin,
                         n_bins=args.cqt_n_bins, bins_per_octave=args.cqt_bins_per_octave
                     )
                 else:
