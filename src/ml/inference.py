@@ -18,9 +18,9 @@ def parse_args():
     parser.add_argument("--exp_dir", required=True, type=str, help="experiments/results path")
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
-    parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
+    parser.add_argument("--silent_threshold", default=30, type=int, help="silent threshold (in dB) for splitting audio")
     parser.add_argument("--min_seg", default=10.0, type=float, help="minimum segment length (in seconds) after splitting")
-    parser.add_argument("--max_seg", default=30.0, type=float, help="maximum segment length (in seconds) after splitting")
+    parser.add_argument("--max_seg", default=15.0, type=float, help="maximum segment length (in seconds) after splitting")
     parser.add_argument("--max_silence", default=10.0, type=float, help="maximum silence length (in seconds) to keep in a segment after splitting")
     # Model parameters
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
@@ -34,14 +34,14 @@ def main():
     vocals_test_dir = vocals_dir / "test"
     inst_test_dir = inst_dir / "test" if inst_dir else None
     exp_dir = pathlib.Path(args.exp_dir)
-    model_path = exp_dir / "model.joblib" if not args.use_boosting else exp_dir / "model.cbm" 
+    ckpt_path = exp_dir / "model.joblib" if not args.use_boosting else exp_dir / "model.cbm" 
 
-    # Load model
+    # Load checkpoint
     if not args.use_boosting:
-        clf = joblib.load(model_path)
+        clf = joblib.load(ckpt_path)
     else:
         clf = CatBoostClassifier()
-        clf.load_model(str(model_path))
+        clf.load_model(str(ckpt_path))
 
     test_files = sorted([f.name for f in vocals_test_dir.iterdir() if str(f).endswith('.mp3')])
     # Prepare dataset (features and labels)
@@ -49,6 +49,7 @@ def main():
         test_data = []
         for name in tqdm(test_files, desc="Extracting features", ncols=80):
             file_name, features = extract_features(
+                data_type="test",
                 vocals_path=vocals_test_dir / name,
                 inst_path=inst_test_dir / name if inst_dir else None,
                 sr=args.sr,
@@ -56,14 +57,14 @@ def main():
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
                 max_seg=args.max_seg,
-                max_silence=args.max_silence,
-                data_type="test"
+                max_silence=args.max_silence
             )
             test_data.append((file_name, features))
     else:
         with tqdm_joblib(tqdm(desc="Extracting features", total=len(test_files), ncols=80)):
             test_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
                 joblib.delayed(extract_features)(
+                    data_type="test",
                     vocals_path=vocals_test_dir / name,
                     inst_path=inst_test_dir / name if inst_dir else None,
                     sr=args.sr,
@@ -71,8 +72,7 @@ def main():
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
                     max_seg=args.max_seg,
-                    max_silence=args.max_silence,
-                    data_type="test"
+                    max_silence=args.max_silence
                 ) for name in test_files
             )
     names, x, num_segs = [], [], []

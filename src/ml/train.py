@@ -22,9 +22,9 @@ def parse_args():
     parser.add_argument("--output_dir", required=True, type=str, help="output results path")
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
-    parser.add_argument("--silent_threshold", default=50, type=int, help="silent threshold (in dB) for splitting audio")
+    parser.add_argument("--silent_threshold", default=30, type=int, help="silent threshold (in dB) for splitting audio")
     parser.add_argument("--min_seg", default=10.0, type=float, help="minimum segment length (in seconds) after splitting")
-    parser.add_argument("--max_seg", default=30.0, type=float, help="maximum segment length (in seconds) after splitting")
+    parser.add_argument("--max_seg", default=15.0, type=float, help="maximum segment length (in seconds) after splitting")
     parser.add_argument("--max_silence", default=10.0, type=float, help="maximum silence length (in seconds) to keep in a segment after splitting")
     parser.add_argument("--num_augments", default=0, type=int, help="number of augmentations per audio (only for training set)")
     parser.add_argument("--time_stretch_ratio", default=0.7, type=float, help="probability of applying time stretching (only for training set)")
@@ -33,10 +33,10 @@ def parse_args():
     # Model parameters
     parser.add_argument("--jobs", default=1, type=int, help="number of parallel jobs")
     parser.add_argument("--use_boosting", action="store_true", help="whether to use boosting (CatBoost) or single decision tree")
-    parser.add_argument("--depth", default=4, type=int, help="depth of decision trees")
+    parser.add_argument("--depth", default=2, type=int, help="depth of decision trees")
     parser.add_argument("--iters", default=10000, type=int, help="number of boosting iterations")
-    parser.add_argument("--lr", default=0.03, type=float, help="learning rate")
-    parser.add_argument("--l2_leaf_reg", default=3.0, type=float, help="L2 regularization term on weights")
+    parser.add_argument("--lr", default=0.05, type=float, help="learning rate")
+    parser.add_argument("--l2_leaf_reg", default=5.0, type=float, help="L2 regularization term on weights")
     parser.add_argument("--seed", default=42, type=int, help="random seed")
     return parser.parse_args()
 
@@ -59,6 +59,7 @@ def main():
         train_data = []
         for name in tqdm(train_names, desc="Extracting training features", ncols=80):
             features, labels = extract_features(
+                data_type="train",
                 vocals_path=vocals_dir / name,
                 inst_path=inst_dir / name if inst_dir else None,
                 sr=args.sr,
@@ -67,7 +68,6 @@ def main():
                 min_seg=args.min_seg,
                 max_seg=args.max_seg,
                 max_silence=args.max_silence,
-                data_type="train",
                 num_augments=args.num_augments,
                 time_stretch_ratio=args.time_stretch_ratio,
                 pitch_shift_ratio=args.pitch_shift_ratio,
@@ -78,6 +78,7 @@ def main():
         with tqdm_joblib(tqdm(desc="Extracting training features", total=len(train_names), ncols=80)):
             train_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
                 joblib.delayed(extract_features)(
+                    data_type="train",
                     vocals_path=vocals_dir / name,
                     inst_path=inst_dir / name if inst_dir else None,
                     sr=args.sr,
@@ -86,7 +87,6 @@ def main():
                     min_seg=args.min_seg,
                     max_seg=args.max_seg,
                     max_silence=args.max_silence,
-                    data_type="train",
                     num_augments=args.num_augments,
                     time_stretch_ratio=args.time_stretch_ratio,
                     pitch_shift_ratio=args.pitch_shift_ratio,
@@ -107,6 +107,7 @@ def main():
         val_data = []
         for name in tqdm(val_names, desc="Extracting validation features", ncols=80):
             features, labels = extract_features(
+                data_type="val",
                 vocals_path=vocals_dir / name,
                 inst_path=inst_dir / name if inst_dir else None,
                 sr=args.sr,
@@ -114,14 +115,14 @@ def main():
                 silent_threshold=args.silent_threshold,
                 min_seg=args.min_seg,
                 max_seg=args.max_seg,
-                max_silence=args.max_silence,
-                data_type="val"
+                max_silence=args.max_silence
             )
             val_data.append((features, labels))
     else:
         with tqdm_joblib(tqdm(desc="Extracting validation features", total=len(val_names), ncols=80)):
             val_data = joblib.Parallel(n_jobs=args.jobs, verbose=0)(
                 joblib.delayed(extract_features)(
+                    data_type="val",
                     vocals_path=vocals_dir / name,
                     inst_path=inst_dir / name if inst_dir else None,
                     sr=args.sr,
@@ -129,8 +130,7 @@ def main():
                     silent_threshold=args.silent_threshold,
                     min_seg=args.min_seg,
                     max_seg=args.max_seg,
-                    max_silence=args.max_silence,
-                    data_type="val"
+                    max_silence=args.max_silence
                 ) for name in val_names
             )
     val_x, val_y, num_segs = [], [], []
@@ -193,7 +193,7 @@ def main():
     top1_acc = top_k_accuracy_score(val_y_song, val_pred_proba_song, k=1, labels=list(artist_code_map.values()))
     top3_acc = top_k_accuracy_score(val_y_song, val_pred_proba_song, k=3, labels=list(artist_code_map.values()))
     print(f"Validation Top-1 Accuracy: {top1_acc:.4f}")
-    print(f"Validation Top-3 Accuracy: {top3_acc:.4f}")
+    print(f"Validation Top-3 Accuracy: {top3_acc:.4f}\n")
 
     # Save confusion matrix
     val_y_pred_song = np.argmax(val_pred_proba_song, axis=1)
@@ -237,7 +237,7 @@ def main():
     plt.savefig(str(output_cm_normalized_path), dpi=300)
     plt.close()
 
-    print(f"Confusion matrices saved to folder: {output_dir}")
+    print(f"===== Confusion matrices saved to folder: {output_dir} =====")
 
 if __name__ == "__main__":
     main()
