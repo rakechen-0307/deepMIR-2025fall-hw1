@@ -1,0 +1,1 @@
+python -m src.dl.train --data_dir ./data/processed/vocals/ --output_dir ./exp/dl --split_audio

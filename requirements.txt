@@ -4,6 +4,7 @@ scikit-learn
 matplotlib
 catboost
 demucs
+torch
 joblib
 tqdm
 gdown
