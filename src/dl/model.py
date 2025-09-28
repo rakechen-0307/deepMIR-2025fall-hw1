@@ -36,7 +36,7 @@ class ShortChunkCNN(torch.nn.Module):
     """
     def __init__(
         self, used_spec, sr=16000, n_class=20,
-        mel_n_channels=64, cqt_n_channels=64, 
+        mel_n_channels=128, cqt_n_channels=128, 
         dropout=0.5
     ):
         super(ShortChunkCNN, self).__init__()
@@ -50,17 +50,17 @@ class ShortChunkCNN(torch.nn.Module):
         # Mel Spectrogram CNN
         self.mel_layer1 = Res_2d(1, mel_n_channels, stride=(2, 2))
         self.mel_layer2 = Res_2d(mel_n_channels, mel_n_channels, stride=(2, 2))
-        self.mel_layer3 = Res_2d(mel_n_channels, mel_n_channels, stride=(2, 2))
-        self.mel_layer4 = Res_2d(mel_n_channels, mel_n_channels*2, stride=(2, 1))
+        self.mel_layer3 = Res_2d(mel_n_channels, mel_n_channels*2, stride=(2, 2))
+        self.mel_layer4 = Res_2d(mel_n_channels*2, mel_n_channels*2, stride=(2, 1))
         self.mel_layer5 = Res_2d(mel_n_channels*2, mel_n_channels*2, stride=(2, 1))
         self.mel_layer6 = Res_2d(mel_n_channels*2, mel_n_channels*2, stride=(2, 1))
         self.mel_layer7 = Res_2d(mel_n_channels*2, mel_n_channels*4, stride=(2, 1))
 
         # CQT CNN
         self.cqt_layer1 = Res_2d(1, cqt_n_channels, stride=(2, 4))
-        self.cqt_layer2 = Res_2d(cqt_n_channels, cqt_n_channels, stride=(2, 4))
-        self.cqt_layer3 = Res_2d(cqt_n_channels, cqt_n_channels, stride=(2, 4))
-        self.cqt_layer4 = Res_2d(cqt_n_channels, cqt_n_channels*2, stride=(1, 2))
+        self.cqt_layer2 = Res_2d(cqt_n_channels, cqt_n_channels, stride=(2, 2))
+        self.cqt_layer3 = Res_2d(cqt_n_channels, cqt_n_channels*2, stride=(2, 2))
+        self.cqt_layer4 = Res_2d(cqt_n_channels*2, cqt_n_channels*2, stride=(1, 2))
         self.cqt_layer5 = Res_2d(cqt_n_channels*2, cqt_n_channels*2, stride=(1, 2))
         self.cqt_layer6 = Res_2d(cqt_n_channels*2, cqt_n_channels*2, stride=(1, 2))
         self.cqt_layer7 = Res_2d(cqt_n_channels*2, cqt_n_channels*4, stride=(1, 2))
@@ -75,11 +75,8 @@ class ShortChunkCNN(torch.nn.Module):
         else:
             raise ValueError("At least one of 'mel' or 'cqt' must be used in used_spec.")
 
-        self.dense1 = torch.nn.Linear(n_channels, n_channels)
-        self.bn = torch.nn.BatchNorm1d(n_channels)
-        self.dense2 = torch.nn.Linear(n_channels, n_class)
+        self.dense = torch.nn.Linear(n_channels, n_class)
         self.dropout = torch.nn.Dropout(dropout)
-        self.relu = torch.nn.ReLU()
 
     def forward(self, mel, cqt):
         # Spectrogram
@@ -123,10 +120,7 @@ class ShortChunkCNN(torch.nn.Module):
             raise ValueError("At least one of 'mel' or 'cqt' must be used in used_spec.")
 
         # Dense
-        x = self.dense1(x)
-        x = self.bn(x)
-        x = self.relu(x)
         x = self.dropout(x)
-        x = self.dense2(x)
+        x = self.dense(x)
 
         return x
