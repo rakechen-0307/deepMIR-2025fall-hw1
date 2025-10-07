@@ -58,7 +58,7 @@ class ShortChunkCNN(torch.nn.Module):
 
         # CQT CNN
         self.cqt_layer1 = Res_2d(1, cqt_n_channels, stride=(2, 4))
-        self.cqt_layer2 = Res_2d(cqt_n_channels, cqt_n_channels, stride=(2, 2))
+        self.cqt_layer2 = Res_2d(cqt_n_channels, cqt_n_channels, stride=(2, 4))
         self.cqt_layer3 = Res_2d(cqt_n_channels, cqt_n_channels*2, stride=(2, 2))
         self.cqt_layer4 = Res_2d(cqt_n_channels*2, cqt_n_channels*2, stride=(1, 2))
         self.cqt_layer5 = Res_2d(cqt_n_channels*2, cqt_n_channels*2, stride=(1, 2))
@@ -75,8 +75,11 @@ class ShortChunkCNN(torch.nn.Module):
         else:
             raise ValueError("At least one of 'mel' or 'cqt' must be used in used_spec.")
 
-        self.dense = torch.nn.Linear(n_channels, n_class)
+        self.dense1 = torch.nn.Linear(n_channels, n_channels)
+        self.bn = torch.nn.BatchNorm1d(n_channels)
+        self.dense2 = torch.nn.Linear(n_channels, n_class)
         self.dropout = torch.nn.Dropout(dropout)
+        self.relu = torch.nn.ReLU()
 
     def forward(self, mel, cqt):
         # Spectrogram
@@ -120,7 +123,55 @@ class ShortChunkCNN(torch.nn.Module):
             raise ValueError("At least one of 'mel' or 'cqt' must be used in used_spec.")
 
         # Dense
+        x = self.dense1(x)
+        x = self.bn(x)
+        x = self.relu(x)
         x = self.dropout(x)
-        x = self.dense(x)
+        x = self.dense2(x)
 
+        return x
+    
+    def extract_embeddings(self, mel, cqt):
+        """Extract embeddings (features before the final dense layer) for visualization."""
+        # Spectrogram
+        if "mel" in self.used_spec:
+            mel = self.spec_bn(mel)
+            mel = self.mel_layer1(mel)
+            mel = self.mel_layer2(mel)
+            mel = self.mel_layer3(mel)
+            mel = self.mel_layer4(mel)
+            mel = self.mel_layer5(mel)
+            mel = self.mel_layer6(mel)
+            mel = self.mel_layer7(mel)
+            mel = mel.squeeze(2)  # [batch, channels, time]
+
+            if mel.size(-1) != 1:
+                mel = torch.nn.MaxPool1d(mel.size(-1))(mel)
+            mel = mel.squeeze(2)
+
+        if "cqt" in self.used_spec:
+            cqt = self.spec_bn(cqt)
+            cqt = self.cqt_layer1(cqt)
+            cqt = self.cqt_layer2(cqt)
+            cqt = self.cqt_layer3(cqt)
+            cqt = self.cqt_layer4(cqt)
+            cqt = self.cqt_layer5(cqt)
+            cqt = self.cqt_layer6(cqt)
+            cqt = self.cqt_layer7(cqt)
+            cqt = cqt.squeeze(3)  # [batch, channels, freq]
+
+            if cqt.size(-1) != 1:
+                cqt = torch.nn.MaxPool1d(cqt.size(-1))(cqt)
+            cqt = cqt.squeeze(2)
+
+        if "mel" in self.used_spec and "cqt" in self.used_spec:
+            x = torch.cat([mel, cqt], dim=1)
+        elif "mel" in self.used_spec:
+            x = mel
+        elif "cqt" in self.used_spec:
+            x = cqt
+        else:
+            raise ValueError("At least one of 'mel' or 'cqt' must be used in used_spec.")
+
+        # Return embeddings before dropout and dense layer
         return x

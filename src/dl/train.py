@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.manifold import TSNE
 
 from .dataset import AudioDataset, extract_melspectrogram, extract_cqt
 from .model import ShortChunkCNN
@@ -31,16 +32,16 @@ def parse_args():
     parser.add_argument("--used_spec", nargs="+", default=["mel", "cqt"], help="Type of spectrogram to use. Choose from 'mel' and 'cqt'.")
     parser.add_argument("--mel_n_channels", type=int, default=128, help="Number of channels for Mel spectrogram CNN.")
     parser.add_argument("--mel_n_fft", type=int, default=512, help="Number of FFT components for Mel spectrogram.")
-    parser.add_argument("--mel_hop_length", type=int, default=128, help="Hop length for Mel spectrogram.")
+    parser.add_argument("--mel_hop_length", type=int, default=160, help="Hop length for Mel spectrogram.")
     parser.add_argument("--mel_power", type=float, default=2.0, help="Exponent for the magnitude spectrogram for Mel spectrogram.")
     parser.add_argument("--mel_fmin", type=float, default=65.0, help="Minimum frequency for Mel spectrogram.")
     parser.add_argument("--mel_fmax", type=float, default=8000.0, help="Maximum frequency for Mel spectrogram.")
     parser.add_argument("--mel_n_mels", type=int, default=128, help="Number of Mel bands for Mel spectrogram.")
     parser.add_argument("--cqt_n_channels", type=int, default=128, help="Number of channels for CQT CNN.")
-    parser.add_argument("--cqt_hop_length", type=int, default=1024, help="Hop length for CQT.")
+    parser.add_argument("--cqt_hop_length", type=int, default=512, help="Hop length for CQT.")
     parser.add_argument("--cqt_fmin", type=float, default=librosa.note_to_hz('C1'), help="Minimum frequency for CQT.")
-    parser.add_argument("--cqt_n_bins", type=int, default=168, help="Number of frequency bins for CQT.")
-    parser.add_argument("--cqt_bins_per_octave", type=int, default=24, help="Number of bins per octave for CQT.")
+    parser.add_argument("--cqt_n_bins", type=int, default=84, help="Number of frequency bins for CQT.")
+    parser.add_argument("--cqt_bins_per_octave", type=int, default=12, help="Number of bins per octave for CQT.")
     # Training parameters
     parser.add_argument("--gpu", type=str, default="0", help="GPU id to use.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for data loading.")
@@ -173,6 +174,7 @@ def main():
     print("===== Training Completed. =====\n")
 
     # Song-level evaluation
+    model.eval()
     top1 = 0
     top3 = 0
     val_preds = []
@@ -281,6 +283,93 @@ def main():
     plt.close()
 
     print(f"===== Confusion matrices saved to folder: {output_dir} =====")
+
+    # Save TSNE plot
+    # Extract embeddings from validation set
+    model.eval()
+    embeddings_list = []
+    labels_list = []
+    artist_names_list = []
+    
+    with torch.no_grad():
+        for i in tqdm(range(len(val_files)), desc="Extracting embeddings", ncols=80):
+            file = val_files[i]
+            label = str(file).split("/")[-3]
+            label_id = artist_code_map[label]
+            
+            y, _ = librosa.load(path=file, sr=args.sr)
+            y = librosa.util.normalize(y)
+
+            intervals = get_intervals(
+                y=y, sr=args.sr, split_audio=args.split_audio, silent_threshold=args.silent_threshold,
+                min_seg=args.min_seg, max_seg=args.max_seg, max_silence=args.max_silence
+            )
+
+            # Take the first segment for embedding extraction
+            interval = intervals[0]
+            y_segment = y[interval[0]:interval[1]]
+
+            if len(y_segment) < int(args.sr * args.max_seg):
+                y_segment = np.pad(y_segment, (0, int(args.sr * args.max_seg) - len(y_segment)), mode="constant")
+            else:
+                y_segment = y_segment[:int(args.sr * args.max_seg)]
+
+            if "mel" in args.used_spec:
+                mel = extract_melspectrogram(
+                    y=y_segment, sr=args.sr, n_fft=args.mel_n_fft, hop_length=args.mel_hop_length,
+                    power=args.mel_power, fmin=args.mel_fmin, fmax=args.mel_fmax, n_mels=args.mel_n_mels
+                )
+            else:
+                mel = torch.zeros((1, 1, 1))  # dummy tensor
+            
+            if "cqt" in args.used_spec:
+                cqt = extract_cqt(
+                    y=y_segment, sr=args.sr, hop_length=args.cqt_hop_length, fmin=args.cqt_fmin,
+                    n_bins=args.cqt_n_bins, bins_per_octave=args.cqt_bins_per_octave
+                )
+            else:
+                cqt = torch.zeros((1, 1, 1))  # dummy tensor
+
+            mel = mel.unsqueeze(0).to(device)
+            cqt = cqt.unsqueeze(0).to(device)
+
+            # Extract embeddings
+            embeddings = model.extract_embeddings(mel, cqt)
+            embeddings_list.append(embeddings.cpu().numpy())
+            labels_list.append(label_id)
+            artist_names_list.append(label)
+
+    embeddings_array = np.vstack(embeddings_list)
+    labels_array = np.array(labels_list)
+    
+    # Apply t-SNE
+    tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings_array)-1))
+    embeddings_2d = tsne.fit_transform(embeddings_array)
+    
+    # Create color map for artists
+    unique_labels = np.unique(labels_array)
+    colors = plt.cm.tab20(np.linspace(0, 1, len(unique_labels)))
+    color_map = {label: colors[i] for i, label in enumerate(unique_labels)}
+    
+    plt.figure(figsize=(16, 12))
+    for label in unique_labels:
+        mask = labels_array == label
+        artist_name = code_artist_map[label]
+        plt.scatter(embeddings_2d[mask, 0], embeddings_2d[mask, 1], 
+                   c=[color_map[label]], label=artist_name, alpha=0.7, s=50)
+    
+    plt.title("t-SNE Visualization of Learned Embeddings\n", fontsize=20)
+    plt.xlabel("t-SNE Component 1", fontsize=16)
+    plt.ylabel("t-SNE Component 2", fontsize=16)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    tsne_path = output_dir / "tsne_embeddings.png"
+    plt.savefig(str(tsne_path), dpi=300, bbox_inches="tight")
+    plt.close()
+    
+    print(f"===== t-SNE visualization saved to: {tsne_path} =====")
 
 if __name__ == "__main__":
     main()
