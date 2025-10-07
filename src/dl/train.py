@@ -358,10 +358,12 @@ def main():
         plt.scatter(embeddings_2d[mask, 0], embeddings_2d[mask, 1], 
                    c=[color_map[label]], label=artist_name, alpha=0.7, s=50)
     
-    plt.title("t-SNE Visualization of Learned Embeddings\n", fontsize=20)
-    plt.xlabel("t-SNE Component 1", fontsize=16)
-    plt.ylabel("t-SNE Component 2", fontsize=16)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=12)
+    plt.title("t-SNE Visualization of Learned Embeddings\n", fontsize=24)
+    plt.xlabel("t-SNE Component 1", fontsize=20)
+    plt.ylabel("t-SNE Component 2", fontsize=20)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=16)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
