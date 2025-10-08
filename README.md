@@ -35,6 +35,7 @@ Run the following command:
 ```bash
 bash scripts/preprocess/download_ckpt.sh
 ```
+The ML model checkpoint is in folder `exp/ml` while the DL model checkpoint is in folder `exp/dl`
 
 ### Vocals Separation
 For executing source separation, run the following command:
