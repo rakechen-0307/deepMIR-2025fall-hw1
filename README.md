@@ -14,13 +14,13 @@ sudo apt-get install -y ffmpeg
 - Install pip dependencies
 
 ```bash
-bash install_env.sh requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Minimal Installation (For Running Inference Only)
 - Install pip dependencies
 ```bash
-bash install_env.sh requirements-inference.txt
+pip install -r requirements-inference.txt
 ```
 
 ## Execute Scripts
