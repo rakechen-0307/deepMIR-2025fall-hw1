@@ -62,7 +62,7 @@ The output results can be found in `exp_dir`
 
 - For DL-based model, run the following command:
 ```bash
-python -m src.dl.inference --test_dir ${test files} --exp_dir ${model checkpoint directory} --split_audio
+python -m src.dl.inference --test_dir ${(vocals stem of) test files} --exp_dir ${model checkpoint directory} --split_audio
 ```
 or simply run:
 ```bash
@@ -85,7 +85,7 @@ The trained model can be found in `output_dir`
 
 - For DL-based model, run the following command:
 ```bash
-python -m src.dl.train --data_dir ${all data files(including train.json & val.json)} --output_dir ${output directory} --split_audio
+python -m src.dl.train --data_dir ${all (vocals stem of) data files(including train.json & val.json)} --output_dir ${output directory} --split_audio
 ```
 or simply run:
 ```bash
