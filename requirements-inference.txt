@@ -1,8 +1,6 @@
-numpy==1.26.4
+numpy
 librosa
-matplotlib
 catboost
-demucs
 torch
 joblib
 tqdm

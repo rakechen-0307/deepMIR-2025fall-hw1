@@ -289,7 +289,6 @@ def main():
     model.eval()
     embeddings_list = []
     labels_list = []
-    artist_names_list = []
     
     with torch.no_grad():
         for i in tqdm(range(len(val_files)), desc="Extracting embeddings", ncols=80):
@@ -305,39 +304,37 @@ def main():
                 min_seg=args.min_seg, max_seg=args.max_seg, max_silence=args.max_silence
             )
 
-            # Take the first segment for embedding extraction
-            interval = intervals[0]
-            y_segment = y[interval[0]:interval[1]]
+            for interval in intervals:
+                y_segment = y[interval[0]:interval[1]]
 
-            if len(y_segment) < int(args.sr * args.max_seg):
-                y_segment = np.pad(y_segment, (0, int(args.sr * args.max_seg) - len(y_segment)), mode="constant")
-            else:
-                y_segment = y_segment[:int(args.sr * args.max_seg)]
+                if len(y_segment) < int(args.sr * args.max_seg):
+                    y_segment = np.pad(y_segment, (0, int(args.sr * args.max_seg) - len(y_segment)), mode="constant")
+                else:
+                    y_segment = y_segment[:int(args.sr * args.max_seg)]
 
-            if "mel" in args.used_spec:
-                mel = extract_melspectrogram(
-                    y=y_segment, sr=args.sr, n_fft=args.mel_n_fft, hop_length=args.mel_hop_length,
-                    power=args.mel_power, fmin=args.mel_fmin, fmax=args.mel_fmax, n_mels=args.mel_n_mels
-                )
-            else:
-                mel = torch.zeros((1, 1, 1))  # dummy tensor
-            
-            if "cqt" in args.used_spec:
-                cqt = extract_cqt(
-                    y=y_segment, sr=args.sr, hop_length=args.cqt_hop_length, fmin=args.cqt_fmin,
-                    n_bins=args.cqt_n_bins, bins_per_octave=args.cqt_bins_per_octave
-                )
-            else:
-                cqt = torch.zeros((1, 1, 1))  # dummy tensor
+                if "mel" in args.used_spec:
+                    mel = extract_melspectrogram(
+                        y=y_segment, sr=args.sr, n_fft=args.mel_n_fft, hop_length=args.mel_hop_length,
+                        power=args.mel_power, fmin=args.mel_fmin, fmax=args.mel_fmax, n_mels=args.mel_n_mels
+                    )
+                else:
+                    mel = torch.zeros((1, 1, 1))  # dummy tensor
+                
+                if "cqt" in args.used_spec:
+                    cqt = extract_cqt(
+                        y=y_segment, sr=args.sr, hop_length=args.cqt_hop_length, fmin=args.cqt_fmin,
+                        n_bins=args.cqt_n_bins, bins_per_octave=args.cqt_bins_per_octave
+                    )
+                else:
+                    cqt = torch.zeros((1, 1, 1))  # dummy tensor
 
-            mel = mel.unsqueeze(0).to(device)
-            cqt = cqt.unsqueeze(0).to(device)
+                mel = mel.unsqueeze(0).to(device)
+                cqt = cqt.unsqueeze(0).to(device)
 
-            # Extract embeddings
-            embeddings = model.extract_embeddings(mel, cqt)
-            embeddings_list.append(embeddings.cpu().numpy())
-            labels_list.append(label_id)
-            artist_names_list.append(label)
+                # Extract embeddings
+                embeddings = model.extract_embeddings(mel, cqt)
+                embeddings_list.append(embeddings.cpu().numpy())
+                labels_list.append(label_id)
 
     embeddings_array = np.vstack(embeddings_list)
     labels_array = np.array(labels_list)
