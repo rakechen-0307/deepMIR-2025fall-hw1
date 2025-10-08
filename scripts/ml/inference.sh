@@ -1,1 +1,1 @@
-python -m src.ml.inference --vocals_dir ./data/processed/vocals/ --inst_dir ./data/processed/inst/ --exp_dir ./exp/ml --jobs 10 --split_audio --use_boosting
+python -m src.ml.inference --vocals_test_dir ./data/processed/vocals/test --inst_test_dir ./data/processed/inst/test --exp_dir ./exp/ml --jobs 10 --split_audio --use_boosting

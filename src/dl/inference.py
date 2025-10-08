@@ -14,7 +14,7 @@ from ..mapping import artist_code_map
 def parse_args():
     parser = argparse.ArgumentParser(description="DL-based singer classification inference.")
     # Data parameters
-    parser.add_argument("--data_dir", type=str, required=True, help="input files path")
+    parser.add_argument("--test_dir", type=str, required=True, help="test files path")
     parser.add_argument("--exp_dir", type=str, required=True, help="experiments/results path")
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
@@ -42,8 +42,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    data_dir = pathlib.Path(args.data_dir)
-    test_dir = data_dir / "test"
+    test_dir = pathlib.Path(args.test_dir)
     exp_dir = pathlib.Path(args.exp_dir)
     ckpt_path = exp_dir / "best_model.pth"
 

@@ -1,1 +1,1 @@
-python -m src.dl.inference --data_dir ./data/processed/vocals/ --exp_dir ./exp/dl --split_audio
+python -m src.dl.inference --test_dir ./data/processed/vocals/test --exp_dir ./exp/dl --split_audio

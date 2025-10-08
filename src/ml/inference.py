@@ -13,8 +13,8 @@ from .utils import extract_features
 def parse_args():
     parser = argparse.ArgumentParser(description="ML-based singer classification inference.")
     # Data parameters
-    parser.add_argument("--vocals_dir", required=True, type=str, help="input vocals files path")
-    parser.add_argument("--inst_dir", type=str, default=None, help="input instrumental files path (if any)")
+    parser.add_argument("--vocals_test_dir", required=True, type=str, help="test vocals files path")
+    parser.add_argument("--inst_test_dir", type=str, default=None, help="test instrumental files path (if any)")
     parser.add_argument("--exp_dir", required=True, type=str, help="experiments/results path")
     parser.add_argument("--sr", default=16000, type=int, help="sampling rate")
     parser.add_argument("--split_audio", action="store_true", help="whether to split audio into segments")
@@ -30,10 +30,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    vocals_dir = pathlib.Path(args.vocals_dir)
-    inst_dir = pathlib.Path(args.inst_dir) if args.inst_dir else None
-    vocals_test_dir = vocals_dir / "test"
-    inst_test_dir = inst_dir / "test" if inst_dir else None
+    vocals_test_dir = pathlib.Path(args.vocals_test_dir)
+    inst_test_dir = pathlib.Path(args.inst_test_dir) if args.inst_test_dir else None
     exp_dir = pathlib.Path(args.exp_dir)
     ckpt_path = exp_dir / "model.joblib" if not args.use_boosting else exp_dir / "model.cbm" 
 
@@ -52,7 +50,7 @@ def main():
             file_name, features = extract_features(
                 data_type="test",
                 vocals_path=vocals_test_dir / name,
-                inst_path=inst_test_dir / name if inst_dir else None,
+                inst_path=inst_test_dir / name if inst_test_dir else None,
                 sr=args.sr,
                 split_audio=args.split_audio,
                 silent_threshold=args.silent_threshold,
@@ -68,7 +66,7 @@ def main():
                 joblib.delayed(extract_features)(
                     data_type="test",
                     vocals_path=vocals_test_dir / name,
-                    inst_path=inst_test_dir / name if inst_dir else None,
+                    inst_path=inst_test_dir / name if inst_test_dir else None,
                     sr=args.sr,
                     split_audio=args.split_audio,
                     silent_threshold=args.silent_threshold,
